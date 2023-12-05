@@ -1,17 +1,3 @@
-# If w is a novel word, initiate Aw = {A(w, h0) = gamma}, where h0 = arg min max(Am)
-# Initialization does not begin with a random word, it takes the most frequent value 
-# among the least frequent ones?
-
-# Functions: Initialize, Update, Lexicalize
-
-# Example:  "dog":      {[DOG, 0.8], [CAT, 0.1]}
-#           "whisker":  {[CAT, 0.6]}
-#           "ball":     {[CAT, 0.1]}
-# The model matches ["dog", DOG] and 
-# moves onto selecting CAT among ["whisker", "ball"]
-# because it is the highest probability among the lowest
-# selects ["whisker", CAT] due to 0.6
-
 import pickle
 import random
 import numpy as np
@@ -39,13 +25,13 @@ def collect_objects(data_pairs):
         objects.update(obj)
     return objects
 
-def initialize_matrix(data_pairs, objects):
+def initialize_matrix(data_pairs, objects, smoothing=0.001):
     """Initialize the association matrix using dictionaries."""
     matrix = {}
     for utterance, _ in data_pairs:
         for word in utterance:
             if word not in matrix:
-                matrix[word] = {o: 0 for o in objects}
+                matrix[word] = {o: smoothing for o in objects}
     return matrix
 
 def reward(x, gamma):
@@ -56,25 +42,120 @@ def punish(x, gamma):
     """Decrease the association strength between a word and an object."""
     return x * (1 - gamma)
 
-def pursuit(data_pairs, matrix, gamma=0.05, threshold=0.5):
-    """Run the Pursuit algorithm to build the lexicon."""
+def pursuit(data_pairs, matrix, gamma=0.05, threshold=0.5, smoothing=0.001):
+    """
+    Run the Pursuit algorithm to build the lexicon with a smoothing factor.
+    
+    Args:
+        data_pairs (list): A list of tuples, each containing an utterance (list of words) and meanings (set of referents).
+        matrix (dict): A dictionary representing the association strengths between words and meanings.
+        gamma (float): The learning rate, a factor by which the association strengths are updated.
+        threshold (float): The confidence threshold at which a word-meaning pair is added to the lexicon.
+        smoothing (float): The smoothing factor λ to be added to each word-meaning association.
+
+    Returns:
+        lexicon (dict): A dictionary mapping words to their most strongly associated meanings.
+    """
+    
+    # Initialize the lexicon, which will be a dictionary mapping words to meanings.
     lexicon = {}
+    
+    # Determine the number of unique referents in the matrix. This will be used in the smoothing calculations.
+    # We assume that each word has associations with all referents, so we take the length of the associations
+    # of the first word in the matrix as the number of referents.
+    N = len(next(iter(matrix.values())))
+    
+    # Iterate over each utterance-meaning pair in the input data.
     for U, M in data_pairs:
+        # For each word in the utterance:
         for word in U:
-            if all(matrix[word][o] == 0 for o in matrix[word]):
-                h_init = min(matrix[word], key=matrix[word].get)
-                matrix[word][h_init] = gamma
-            h = max(matrix[word], key=matrix[word].get)
+            # Calculate the total association strength of the word with all meanings, adding the smoothing factor
+            # for each meaning. This normalization step is necessary to turn association strengths into probabilities.
+            total_association = sum(matrix[word].values()) + N * smoothing
+            
+            # Calculate the smoothed conditional probability of each meaning given the word.
+            # This is done using the provided formula with smoothing.
+            probabilities = {m: (matrix[word][m] + smoothing) / total_association for m in matrix[word]}
+            
+            # Find the meaning with the highest conditional probability for the current word.
+            h = max(probabilities, key=probabilities.get)
+            
+            # If the highest probability meaning is one of the meanings in the current utterance's meaning set:
             if h in M:
+                # Increase the association strength for this word-meaning pair using the reward function.
                 matrix[word][h] = reward(matrix[word][h], gamma)
+                
+                # If the updated association strength exceeds the threshold, add the word-meaning pair to the lexicon.
                 if matrix[word][h] > threshold:
                     lexicon[word] = h
             else:
+                # If the highest probability meaning is not in the utterance's meaning set, decrease the
+                # association strength for this word-meaning pair using the punish function.
                 matrix[word][h] = punish(matrix[word][h], gamma)
+                
+                # Also decrease the association strength for other meanings not in the utterance's meaning set.
+                for other_meaning in set(matrix[word]) - set(M):
+                    matrix[word][other_meaning] = punish(matrix[word][other_meaning], gamma)
+                
+                # Choose a new meaning randomly from the utterance's meaning set.
                 h_new = random.choice(list(M))
+                
+                # If the new meaning is not already associated with the word, initialize its association strength with the smoothing factor.
                 if h_new not in matrix[word]:
-                    matrix[word][h_new] = 0
+                    matrix[word][h_new] = smoothing
+                
+                # Increase the association strength for the new word-meaning pair using the reward function.
                 matrix[word][h_new] = reward(matrix[word][h_new], gamma)
+    
+    # Return the completed lexicon.
+    return lexicon
+
+def pursuit_roulette(data_pairs, matrix, gamma=0.05, threshold=0.5, smoothing=0.001):
+    """
+    Run the Pursuit algorithm with a modified selection mechanism. If the highest probability 
+    meaning is not in the current utterance, a roulette-wheel selection is made based on the 
+    association strengths of the meanings in the current utterance.
+
+    Roulette-wheel selection ensures that the probability of selecting a particular meaning
+    is proportional to its association strength, reflecting a more naturalistic approach to
+    word learning, akin to human language acquisition.
+    """
+    lexicon = {}  # Initialize the lexicon, which will map words to meanings.
+
+    N = len(next(iter(matrix.values())))  # Number of referents in the matrix for smoothing purposes.
+
+    for U, M in data_pairs:
+        for word in U:
+            # Calculate the total association of the word with all meanings, adding smoothing.
+            total_association = sum(matrix[word].values()) + N * smoothing
+
+            # Calculate the smoothed conditional probabilities of meanings given the word.
+            probabilities = {m: (matrix[word][m] + smoothing) / total_association for m in matrix[word]}
+
+            # Apply standard Pursuit algorithm for updating associations.
+            h = max(probabilities, key=probabilities.get)
+            if h in M:
+                matrix[word][h] = reward(matrix[word][h], gamma)
+            else:
+                matrix[word][h] = punish(matrix[word][h], gamma)
+
+                if current_meanings_weights := [
+                    (m, matrix[word][m]) for m in M if matrix[word][m] > 0
+                ]:
+                    # If there are associated meanings with strength > 0, choose based on their weights.
+                    h_new, _ = random.choices(current_meanings_weights, weights=[weight for _, weight in current_meanings_weights], k=1)[0]
+                    matrix[word][h_new] = reward(matrix[word][h_new], gamma)
+                else:
+                    # If no meanings have been associated yet, fall back to a completely random choice.
+                    random_meaning = random.choice(list(M))
+                    matrix[word][random_meaning] = reward(matrix[word].get(random_meaning, smoothing), gamma)
+
+    # After all iterations, build the lexicon based on the updated matrix.
+    for word, meanings in matrix.items():
+        most_probable_meaning = max(meanings, key=meanings.get)
+        if meanings[most_probable_meaning] > threshold:
+            lexicon[word] = most_probable_meaning
+
     return lexicon
 
 def evaluate_model(proposed_pairs, gold_standard):
@@ -130,7 +211,8 @@ for _ in range(1000):
     matrix = initialize_matrix(data_pairs, objects)
 
     # Run the Pursuit algorithm
-    lexicon = pursuit(data_pairs, matrix)
+    lexicon = pursuit_roulette(data_pairs, matrix)
+    print(lexicon)
 
     # Evaluate the generated lexicon
     precision, recall, f_score = evaluate_model(lexicon, gold_standard)
