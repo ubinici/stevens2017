@@ -1,6 +1,7 @@
 import pickle
 import random
 import numpy as np
+from collections import defaultdict
 
 # Load datasets
 with open("data_pairs.pkl", "rb") as file:
@@ -36,26 +37,26 @@ def propose_but_verify_with_history(data_pairs):
 
     # Iterate through each sentence and its potential referents
     for sentence, potential_referents in data_pairs:
-        #chosen_word = random.choice(sentence) <- this probably does not pair every single word with a referent, hence higher precision rate
-        for word in sentence:
-            chosen_word = word
-        # Check if this word has a history and its referent is in the current list of potential referents
+        for chosen_word in sentence:
+            # If the word already has history, check if any of its historical referents are in the current potential referents
             if chosen_word in word_history:
-                if word_history[chosen_word] in potential_referents:
-                    # If the referent is present, keep the existing pair
-                    word_referent_pairs[chosen_word] = word_history[chosen_word]
+                historical_referents = word_history[chosen_word]
+                common_referents = historical_referents.intersection(potential_referents)
+                
+                if common_referents:
+                    # If there's a common referent, choose one and update the word_referent_pairs
+                    new_referent = random.choice(list(common_referents))
+                    word_referent_pairs[chosen_word] = new_referent
                 else:
-                    # If the referent is not present, choose a different referent
-                    available_referents = [r for r in potential_referents if r != word_history[chosen_word]]
-                    if available_referents:
-                        new_referent = random.choice(available_referents)
-                        word_referent_pairs[chosen_word] = new_referent
-                        word_history[chosen_word] = new_referent
+                    # If no common referents, choose a new referent and update both dictionaries
+                    new_referent = random.choice(potential_referents)
+                    word_referent_pairs[chosen_word] = new_referent
+                    word_history[chosen_word].add(new_referent)
             else:
-                # If this word does not have a history, match it with a random referent from the list
+                # If the word has no history, choose a referent and initialize its history
                 chosen_referent = random.choice(potential_referents)
                 word_referent_pairs[chosen_word] = chosen_referent
-                word_history[chosen_word] = chosen_referent
+                word_history[chosen_word] = {chosen_referent}  # Initialize as a set with the chosen referent
 
     return word_referent_pairs
 
@@ -65,8 +66,15 @@ def propose_but_verify(data_pairs):
 
     for sentence, potential_referents in data_pairs:
         for word in sentence:
-            chosen_referent = random.choice(potential_referents)
-            word_referent_pairs[word] = chosen_referent
+            if word in word_referent_pairs:
+                if word_referent_pairs[word] not in potential_referents:
+                    chosen_referent = random.choice(potential_referents)
+                    word_referent_pairs[word] = chosen_referent
+                else:
+                    continue
+            else:
+                chosen_referent = random.choice(potential_referents)
+                word_referent_pairs[word] = chosen_referent
 
     return word_referent_pairs
 
