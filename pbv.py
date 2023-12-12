@@ -36,26 +36,26 @@ def propose_but_verify_with_history(data_pairs):
 
     # Iterate through each sentence and its potential referents
     for sentence, potential_referents in data_pairs:
-        # Select a random word from the sentence
-        chosen_word = random.choice(sentence)
-
+        #chosen_word = random.choice(sentence) <- this probably does not pair every single word with a referent, hence higher precision rate
+        for word in sentence:
+            chosen_word = word
         # Check if this word has a history and its referent is in the current list of potential referents
-        if chosen_word in word_history:
-            if word_history[chosen_word] in potential_referents:
-                # If the referent is present, keep the existing pair
-                word_referent_pairs[chosen_word] = word_history[chosen_word]
+            if chosen_word in word_history:
+                if word_history[chosen_word] in potential_referents:
+                    # If the referent is present, keep the existing pair
+                    word_referent_pairs[chosen_word] = word_history[chosen_word]
+                else:
+                    # If the referent is not present, choose a different referent
+                    available_referents = [r for r in potential_referents if r != word_history[chosen_word]]
+                    if available_referents:
+                        new_referent = random.choice(available_referents)
+                        word_referent_pairs[chosen_word] = new_referent
+                        word_history[chosen_word] = new_referent
             else:
-                # If the referent is not present, choose a different referent
-                available_referents = [r for r in potential_referents if r != word_history[chosen_word]]
-                if available_referents:
-                    new_referent = random.choice(available_referents)
-                    word_referent_pairs[chosen_word] = new_referent
-                    word_history[chosen_word] = new_referent
-        else:
-            # If this word does not have a history, match it with a random referent from the list
-            chosen_referent = random.choice(potential_referents)
-            word_referent_pairs[chosen_word] = chosen_referent
-            word_history[chosen_word] = chosen_referent
+                # If this word does not have a history, match it with a random referent from the list
+                chosen_referent = random.choice(potential_referents)
+                word_referent_pairs[chosen_word] = chosen_referent
+                word_history[chosen_word] = chosen_referent
 
     return word_referent_pairs
 
@@ -117,7 +117,7 @@ f_scores = []
 
 # Run the model 1000 times and evaluate its performance
 for _ in range(1000):
-    proposed_pairs = propose_but_verify(data_pairs_combined)
+    proposed_pairs = propose_but_verify_with_history(data_pairs_combined)
     precision, recall, f_score = evaluate_model(proposed_pairs, gold_standard)
     
     precisions.append(precision)
