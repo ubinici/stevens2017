@@ -35,28 +35,31 @@ def propose_but_verify_with_history(data_pairs):
     word_referent_pairs = {}
     word_history = {}
 
-    # Iterate through each sentence and its potential referents
     for sentence, potential_referents in data_pairs:
         for chosen_word in sentence:
-            # If the word already has history, check if any of its historical referents are in the current potential referents
-            if chosen_word in word_history:
-                historical_referents = word_history[chosen_word]
-                common_referents = historical_referents.intersection(potential_referents)
+            # If the word already has a matched referent and it's in the current potential referents, keep it
+            if chosen_word in word_referent_pairs and word_referent_pairs[chosen_word] in potential_referents:
+                # No need to change the existing pair
+                continue
+            elif chosen_word in word_history:
+                # If the existing pair is not valid, check the word's history for common referents
+                memorized_referents = word_history[chosen_word]
+                common_referents = memorized_referents.intersection(potential_referents)
                 
                 if common_referents:
-                    # If there's a common referent, choose one and update the word_referent_pairs
+                    # If there are common referents, choose one
                     new_referent = random.choice(list(common_referents))
                     word_referent_pairs[chosen_word] = new_referent
                 else:
-                    # If no common referents, choose a new referent and update both dictionaries
+                    # If no common referents, choose a new referent
                     new_referent = random.choice(potential_referents)
                     word_referent_pairs[chosen_word] = new_referent
                     word_history[chosen_word].add(new_referent)
             else:
-                # If the word has no history, choose a referent and initialize its history
+                # If the word has no history, choose a new referent and initialize its history
                 chosen_referent = random.choice(potential_referents)
                 word_referent_pairs[chosen_word] = chosen_referent
-                word_history[chosen_word] = {chosen_referent}  # Initialize as a set with the chosen referent
+                word_history[chosen_word] = {chosen_referent}
 
     return word_referent_pairs
 
