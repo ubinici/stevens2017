@@ -44,9 +44,9 @@ def propose_but_verify_with_history(data_pairs):
             elif chosen_word in word_history:
                 # If the existing pair is not valid, check the word's history for common referents
                 memorized_referents = word_history[chosen_word]
-                common_referents = memorized_referents.intersection(potential_referents)
-                
-                if common_referents:
+                if common_referents := memorized_referents.intersection(
+                    potential_referents
+                ):
                     # If there are common referents, choose one
                     new_referent = random.choice(list(common_referents))
                     word_referent_pairs[chosen_word] = new_referent
@@ -69,16 +69,15 @@ def propose_but_verify(data_pairs):
 
     for sentence, potential_referents in data_pairs:
         for word in sentence:
-            if word in word_referent_pairs:
+            if word not in word_referent_pairs:
+                chosen_word = word
+                chosen_referent = random.choice(potential_referents)
+                word_referent_pairs[chosen_word] = chosen_referent
+            elif word in word_referent_pairs:
                 if word_referent_pairs[word] not in potential_referents:
                     chosen_referent = random.choice(potential_referents)
                     word_referent_pairs[word] = chosen_referent
-                else:
-                    continue
-            else:
-                chosen_referent = random.choice(potential_referents)
-                word_referent_pairs[word] = chosen_referent
-
+                    
     return word_referent_pairs
 
 def evaluate_model(proposed_pairs, gold_standard):
@@ -128,7 +127,7 @@ f_scores = []
 
 # Run the model 1000 times and evaluate its performance
 for _ in range(1000):
-    proposed_pairs = propose_but_verify_with_history(data_pairs_combined)
+    proposed_pairs = propose_but_verify(data_pairs)
     precision, recall, f_score = evaluate_model(proposed_pairs, gold_standard)
     
     precisions.append(precision)
