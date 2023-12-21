@@ -42,7 +42,7 @@ def punish(x, gamma):
     """Decrease the association strength between a word and an object."""
     return x * (1 - gamma)
 
-def pursuit(data_pairs, matrix, gamma=0.05, threshold=0.5, smoothing=0.001):
+def pursuit(data_pairs, matrix, gamma=0.05, threshold=0.51, smoothing=0.001):
     """
     Run the Pursuit algorithm to build the lexicon with a smoothing factor.
     
@@ -110,7 +110,7 @@ def pursuit(data_pairs, matrix, gamma=0.05, threshold=0.5, smoothing=0.001):
     # Return the completed lexicon.
     return lexicon
 
-def pursuit_roulette(data_pairs, matrix, gamma=0.05, threshold=0.5, smoothing=0.001):
+def pursuit_roulette(data_pairs, matrix, gamma=0.05, threshold=0.51, smoothing=0.001):
     """
     Run the Pursuit algorithm with a modified selection mechanism. If the highest probability 
     meaning is not in the current utterance, a roulette-wheel selection is made based on the 
@@ -212,7 +212,6 @@ for _ in range(1000):
 
     # Run the Pursuit algorithm
     lexicon = pursuit_roulette(data_pairs, matrix)
-    print(lexicon)
 
     # Evaluate the generated lexicon
     precision, recall, f_score = evaluate_model(lexicon, gold_standard)
