@@ -127,7 +127,7 @@ f_scores = []
 
 # Run the model 1000 times and evaluate its performance
 for _ in range(1000):
-    proposed_pairs = propose_but_verify(data_pairs)
+    proposed_pairs = propose_but_verify_with_history(data_pairs)
     precision, recall, f_score = evaluate_model(proposed_pairs, gold_standard)
     
     precisions.append(precision)

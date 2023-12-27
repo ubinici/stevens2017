@@ -2,29 +2,47 @@ from nltk.corpus import stopwords
 import nltk
 from collections import Counter
 import pickle
+import numpy as np 
+from sklearn.feature_extraction.text import TfidfVectorizer
+import re
 
-def create_dynamic_stopwords(corpus_path, threshold=0.01):
+def create_dynamic_stopwords(corpus_path, tfidf_threshold_percentile=10, freq_threshold=0.01):
     """
-    Create a dynamic list of stopwords based on word frequencies.
+    Create a dynamic list of stopwords based on both TF-IDF scores and word frequencies.
     
     Args:
     - corpus_path (str): Path to the corpus file.
-    - threshold (float): The threshold for considering a word as a stopword,
-                         defined as a proportion of the total word count.
+    - tfidf_threshold_percentile (float): The percentile threshold for considering a word as a stopword based on TF-IDF scores.
+    - freq_threshold (float): The threshold for considering a word as a stopword based on frequency.
     
     Returns:
     - set: A set of dynamically determined stopwords.
     """
-    word_freq = Counter()
-
+    # Read the corpus
     with open(corpus_path, 'r') as file:
-        for line in file:
-            words = line.strip().split()
-            word_freq.update(word.lower() for word in words if not word.isupper())
+        text = file.read()
 
+    # Extract lowercase sentences (utterances) from the text
+    utterances = re.findall(r'\n([a-z ].+)', text)
+
+    # Calculate TF-IDF scores
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_matrix = tfidf_vectorizer.fit_transform(utterances)
+    feature_names = tfidf_vectorizer.get_feature_names_out()
+    word_tfidf_scores = tfidf_matrix.sum(axis=0).A1
+    word_tfidf_dict = dict(zip(feature_names, word_tfidf_scores))
+
+    # Determine the TF-IDF threshold for stopwords
+    tfidf_threshold = np.percentile(list(word_tfidf_dict.values()), tfidf_threshold_percentile)
+
+    # Calculate word frequencies
+    word_freq = Counter(word.lower() for utterance in utterances for word in utterance.split())
     total_words = sum(word_freq.values())
-    dynamic_stopwords = {word for word, freq in word_freq.items() if freq / total_words > threshold}
-    return dynamic_stopwords
+
+    # Identify stopwords based on TF-IDF and frequency
+    stopwords = {word for word, score in word_tfidf_dict.items() if score <= tfidf_threshold}
+    stopwords.update({word for word, freq in word_freq.items() if freq / total_words > freq_threshold})
+    return stopwords
 
 def process_rollins(corpus_path, stopwords):
     """
@@ -59,7 +77,42 @@ def process_rollins(corpus_path, stopwords):
         else:
             filtered_words = [word for word in words if word.lower() not in stopwords]
             spoken_words = filtered_words
+        
+    return data
 
+def process_raw_rollins(corpus_path):
+    """
+    Process the Rollins corpus with stopwords removal from the sentences.
+    
+    Args:
+    - corpus_path (str): Path to the Rollins corpus file.
+    - stopwords (set): A set of stopwords to be filtered out.
+    
+    Returns:
+    - list: A list of (spoken_words, referents) pairs.
+    """
+    with open(corpus_path, 'r') as file:
+        lines = file.readlines()
+
+    data = []
+    spoken_words = []
+    referents = []
+
+    for line in lines:
+        words = line.strip().split()
+        
+        if not words:
+            continue
+        
+        if words[0].isupper():
+            referents = words
+            if spoken_words:
+                data.append((spoken_words, referents))
+                spoken_words = []
+        
+        else:
+            filtered_words = [word for word in words if word.lower()]
+            spoken_words = filtered_words
     return data
 
 def process_gold(lexicon_path):
@@ -125,9 +178,6 @@ def process_rollins_combined(corpus_path, static_stopwords, dynamic_stopwords):
 
     return data
 
-# Combine static and dynamic stopwords
-
-
 # Paths to the corpus and lexicon files
 corpus_path = "rollins.txt"
 lexicon_path = "gold.txt"
@@ -135,11 +185,14 @@ lexicon_path = "gold.txt"
 nltk.download('stopwords')
 static_stopwords = set(stopwords.words('english'))
 
+data_pairs_raw = process_raw_rollins(corpus_path)
+
 # Process the file with static stopwords
 data_pairs_static = process_rollins(corpus_path, static_stopwords)
 
 # Create dynamic stopwords list
 dynamic_stopwords = create_dynamic_stopwords(corpus_path)
+print(dynamic_stopwords)
 
 # Process the file with dynamic stopwords
 data_pairs_static = process_rollins(corpus_path, static_stopwords)
@@ -148,9 +201,10 @@ gold_standard = process_gold(lexicon_path)
 
 data_pairs_combined = process_rollins_combined(corpus_path, static_stopwords, dynamic_stopwords)
 
-# Save the processed data with combined stopwords using pickle
-combined_file_path = 'data_pairs_combined.pkl'
-with open(combined_file_path, 'wb') as file:
+with open('data_pairs.pkl', 'wb') as file:
+    pickle.dump(data_pairs_raw, file)
+
+with open('data_pairs_combined.pkl', 'wb') as file:
     pickle.dump(data_pairs_combined, file)
 
 with open('data_pairs_static.pkl', 'wb') as file:
